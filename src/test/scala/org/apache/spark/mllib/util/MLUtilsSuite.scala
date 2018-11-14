@@ -197,11 +197,11 @@ class MLUtilsSuite extends SparkFunSuite with MLlibTestSparkContext {
           val lowerBound = expected - range
           val upperBound = expected + range
           assert(validationSize > lowerBound,
-            s"Validation data ($validationSize) smaller than expected ($lowerBound)" )
+            s"Validation data ($validationSize) smaller than expected ($lowerBound)")
           assert(validationSize < upperBound,
-            s"Validation data ($validationSize) larger than expected ($upperBound)" )
+            s"Validation data ($validationSize) larger than expected ($upperBound)")
           assert(training.collect().size > 0, "empty training data")
-          assert(result ===  collectedData,
+          assert(result === collectedData,
             "Each training+validation set combined should contain all of the data.")
         }
         // K fold cross validation should only have each element in the validation set exactly once

@@ -31,17 +31,18 @@ import scala.collection.JavaConverters._
 private[ml] object TreeTests extends SparkFunSuite {
 
   /**
-   * Convert the given data to a DataFrame, and set the features and label metadata.
-   * @param data  Dataset.  Categorical features and labels must already have 0-based indices.
-   *              This must be non-empty.
-   * @param categoricalFeatures  Map: categorical feature index -> number of distinct values
-   * @param numClasses  Number of classes label can take.  If 0, mark as continuous.
-   * @return DataFrame with metadata
-   */
+    * Convert the given data to a DataFrame, and set the features and label metadata.
+    *
+    * @param data                Dataset.  Categorical features and labels must already have 0-based indices.
+    *                            This must be non-empty.
+    * @param categoricalFeatures Map: categorical feature index -> number of distinct values
+    * @param numClasses          Number of classes label can take.  If 0, mark as continuous.
+    * @return DataFrame with metadata
+    */
   def setMetadata(
-      data: RDD[LabeledPoint],
-      categoricalFeatures: Map[Int, Int],
-      numClasses: Int): DataFrame = {
+                   data: RDD[LabeledPoint],
+                   categoricalFeatures: Map[Int, Int],
+                   numClasses: Int): DataFrame = {
     val spark = SparkSession.builder()
       .master("local[2]")
       .appName("TreeTests")
@@ -71,27 +72,28 @@ private[ml] object TreeTests extends SparkFunSuite {
 
   /** Java-friendly version of [[setMetadata()]] */
   def setMetadata(
-      data: JavaRDD[LabeledPoint],
-      categoricalFeatures: java.util.Map[java.lang.Integer, java.lang.Integer],
-      numClasses: Int): DataFrame = {
+                   data: JavaRDD[LabeledPoint],
+                   categoricalFeatures: java.util.Map[java.lang.Integer, java.lang.Integer],
+                   numClasses: Int): DataFrame = {
     setMetadata(data.rdd, categoricalFeatures.asInstanceOf[java.util.Map[Int, Int]].asScala.toMap,
       numClasses)
   }
 
   /**
-   * Set label metadata (particularly the number of classes) on a DataFrame.
-   * @param data  Dataset.  Categorical features and labels must already have 0-based indices.
-   *              This must be non-empty.
-   * @param numClasses  Number of classes label can take. If 0, mark as continuous.
-   * @param labelColName  Name of the label column on which to set the metadata.
-   * @param featuresColName  Name of the features column
-   * @return DataFrame with metadata
-   */
+    * Set label metadata (particularly the number of classes) on a DataFrame.
+    *
+    * @param data            Dataset.  Categorical features and labels must already have 0-based indices.
+    *                        This must be non-empty.
+    * @param numClasses      Number of classes label can take. If 0, mark as continuous.
+    * @param labelColName    Name of the label column on which to set the metadata.
+    * @param featuresColName Name of the features column
+    * @return DataFrame with metadata
+    */
   def setMetadata(
-      data: DataFrame,
-      numClasses: Int,
-      labelColName: String,
-      featuresColName: String): DataFrame = {
+                   data: DataFrame,
+                   numClasses: Int,
+                   labelColName: String,
+                   featuresColName: String): DataFrame = {
     val labelAttribute = if (numClasses == 0) {
       NumericAttribute.defaultAttr.withName(labelColName)
     } else {
@@ -102,11 +104,11 @@ private[ml] object TreeTests extends SparkFunSuite {
   }
 
   /**
-   * Check if the two trees are exactly the same.
-   * Note: I hesitate to override Node.equals since it could cause problems if users
-   *       make mistakes such as creating loops of Nodes.
-   * If the trees are not equal, this prints the two trees and throws an exception.
-   */
+    * Check if the two trees are exactly the same.
+    * Note: I hesitate to override Node.equals since it could cause problems if users
+    * make mistakes such as creating loops of Nodes.
+    * If the trees are not equal, this prints the two trees and throws an exception.
+    */
   def checkEqual(a: DecisionTreeModel, b: DecisionTreeModel): Unit = {
     try {
       checkEqual(a.rootNode, b.rootNode)
@@ -119,10 +121,10 @@ private[ml] object TreeTests extends SparkFunSuite {
   }
 
   /**
-   * Return true iff the two nodes and their descendants are exactly the same.
-   * Note: I hesitate to override Node.equals since it could cause problems if users
-   *       make mistakes such as creating loops of Nodes.
-   */
+    * Return true iff the two nodes and their descendants are exactly the same.
+    * Note: I hesitate to override Node.equals since it could cause problems if users
+    * make mistakes such as creating loops of Nodes.
+    */
   private def checkEqual(a: Node, b: Node): Unit = {
     assert(a.prediction === b.prediction)
     assert(a.impurity === b.impurity)
@@ -138,9 +140,9 @@ private[ml] object TreeTests extends SparkFunSuite {
   }
 
   /**
-   * Check if the two models are exactly the same.
-   * If the models are not equal, this throws an exception.
-   */
+    * Check if the two models are exactly the same.
+    * If the models are not equal, this throws an exception.
+    */
   def checkEqual[M <: DecisionTreeModel](a: TreeEnsembleModel[M], b: TreeEnsembleModel[M]): Unit = {
     try {
       a.trees.zip(b.trees).foreach { case (treeA, treeB) =>
@@ -154,11 +156,12 @@ private[ml] object TreeTests extends SparkFunSuite {
   }
 
   /**
-   * Helper method for constructing a tree for testing.
-   * Given left, right children, construct a parent node.
-   * @param split  Split for parent node
-   * @return  Parent node with children attached
-   */
+    * Helper method for constructing a tree for testing.
+    * Given left, right children, construct a parent node.
+    *
+    * @param split Split for parent node
+    * @return Parent node with children attached
+    */
   def buildParentNode(left: Node, right: Node, split: Split): Node = {
     val leftImp = left.impurityStats
     val rightImp = right.impurityStats
@@ -172,8 +175,8 @@ private[ml] object TreeTests extends SparkFunSuite {
   }
 
   /**
-   * Create some toy data for testing feature importances.
-   */
+    * Create some toy data for testing feature importances.
+    */
   def featureImportanceData(sc: SparkContext): RDD[LabeledPoint] = sc.parallelize(Seq(
     new LabeledPoint(0, Vectors.dense(1, 0, 0, 0, 1)),
     new LabeledPoint(1, Vectors.dense(1, 1, 0, 1, 0)),
@@ -183,8 +186,8 @@ private[ml] object TreeTests extends SparkFunSuite {
   ))
 
   /**
-   * Create some toy data for testing correctness of variance.
-   */
+    * Create some toy data for testing correctness of variance.
+    */
   def varianceData(sc: SparkContext): RDD[LabeledPoint] = sc.parallelize(Seq(
     new LabeledPoint(1.0, Vectors.dense(Array(0.0))),
     new LabeledPoint(2.0, Vectors.dense(Array(1.0))),
@@ -195,12 +198,12 @@ private[ml] object TreeTests extends SparkFunSuite {
   ))
 
   /**
-   * Mapping from all Params to valid settings which differ from the defaults.
-   * This is useful for tests which need to exercise all Params, such as save/load.
-   * This excludes input columns to simplify some tests.
-   *
-   * This set of Params is for all Decision Tree-based models.
-   */
+    * Mapping from all Params to valid settings which differ from the defaults.
+    * This is useful for tests which need to exercise all Params, such as save/load.
+    * This excludes input columns to simplify some tests.
+    *
+    * This set of Params is for all Decision Tree-based models.
+    */
   val allParamSettings: Map[String, Any] = Map(
     "checkpointInterval" -> 7,
     "seed" -> 543L,

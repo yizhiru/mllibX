@@ -39,9 +39,9 @@ object MLTestingUtils extends SparkFunSuite {
   }
 
   def checkNumericTypes[M <: Model[M], T <: Estimator[M]](
-      estimator: T,
-      spark: SparkSession,
-      isClassification: Boolean = true)(check: (M, M) => Unit): Unit = {
+                                                           estimator: T,
+                                                           spark: SparkSession,
+                                                           isClassification: Boolean = true)(check: (M, M) => Unit): Unit = {
     val dfs = if (isClassification) {
       genClassifDFWithNumericLabelCol(spark)
     } else {
@@ -62,12 +62,12 @@ object MLTestingUtils extends SparkFunSuite {
   }
 
   def checkNumericTypesALS(
-      estimator: ALS,
-      spark: SparkSession,
-      column: String,
-      baseType: NumericType)
-      (check: (ALSModel, ALSModel) => Unit)
-      (check2: (ALSModel, ALSModel, DataFrame) => Unit): Unit = {
+                            estimator: ALS,
+                            spark: SparkSession,
+                            column: String,
+                            baseType: NumericType)
+                          (check: (ALSModel, ALSModel) => Unit)
+                          (check2: (ALSModel, ALSModel, DataFrame) => Unit): Unit = {
     val dfs = genRatingsDFWithNumericCols(spark, column)
     val expected = estimator.fit(dfs(baseType))
     val actuals = dfs.keys.filter(_ != baseType).map(t => (t, estimator.fit(dfs(t))))
@@ -102,9 +102,9 @@ object MLTestingUtils extends SparkFunSuite {
   }
 
   def genClassifDFWithNumericLabelCol(
-      spark: SparkSession,
-      labelColName: String = "label",
-      featuresColName: String = "features"): Map[NumericType, DataFrame] = {
+                                       spark: SparkSession,
+                                       labelColName: String = "label",
+                                       featuresColName: String = "features"): Map[NumericType, DataFrame] = {
     val df = spark.createDataFrame(Seq(
       (0, Vectors.dense(0, 2, 3)),
       (1, Vectors.dense(0, 3, 1)),
@@ -116,16 +116,16 @@ object MLTestingUtils extends SparkFunSuite {
     val types =
       Seq(ShortType, LongType, IntegerType, FloatType, ByteType, DoubleType, DecimalType(10, 0))
     types.map { t =>
-        val castDF = df.select(col(labelColName).cast(t), col(featuresColName))
-        t -> TreeTests.setMetadata(castDF, 2, labelColName, featuresColName)
-      }.toMap
+      val castDF = df.select(col(labelColName).cast(t), col(featuresColName))
+      t -> TreeTests.setMetadata(castDF, 2, labelColName, featuresColName)
+    }.toMap
   }
 
   def genRegressionDFWithNumericLabelCol(
-      spark: SparkSession,
-      labelColName: String = "label",
-      featuresColName: String = "features",
-      censorColName: String = "censor"): Map[NumericType, DataFrame] = {
+                                          spark: SparkSession,
+                                          labelColName: String = "label",
+                                          featuresColName: String = "features",
+                                          censorColName: String = "censor"): Map[NumericType, DataFrame] = {
     val df = spark.createDataFrame(Seq(
       (0, Vectors.dense(0)),
       (1, Vectors.dense(1)),
@@ -137,15 +137,15 @@ object MLTestingUtils extends SparkFunSuite {
     val types =
       Seq(ShortType, LongType, IntegerType, FloatType, ByteType, DoubleType, DecimalType(10, 0))
     types.map { t =>
-        val castDF = df.select(col(labelColName).cast(t), col(featuresColName))
-        t -> TreeTests.setMetadata(castDF, 0, labelColName, featuresColName)
-          .withColumn(censorColName, lit(0.0))
-      }.toMap
+      val castDF = df.select(col(labelColName).cast(t), col(featuresColName))
+      t -> TreeTests.setMetadata(castDF, 0, labelColName, featuresColName)
+        .withColumn(censorColName, lit(0.0))
+    }.toMap
   }
 
   def genRatingsDFWithNumericCols(
-      spark: SparkSession,
-      column: String): Map[NumericType, DataFrame] = {
+                                   spark: SparkSession,
+                                   column: String): Map[NumericType, DataFrame] = {
     val df = spark.createDataFrame(Seq(
       (0, 10, 1.0),
       (1, 20, 2.0),
@@ -164,9 +164,9 @@ object MLTestingUtils extends SparkFunSuite {
   }
 
   def genEvaluatorDFWithNumericLabelCol(
-      spark: SparkSession,
-      labelColName: String = "label",
-      predictionColName: String = "prediction"): Map[NumericType, DataFrame] = {
+                                         spark: SparkSession,
+                                         labelColName: String = "label",
+                                         predictionColName: String = "prediction"): Map[NumericType, DataFrame] = {
     val df = spark.createDataFrame(Seq(
       (0, 0d),
       (1, 1d),
@@ -183,9 +183,9 @@ object MLTestingUtils extends SparkFunSuite {
   }
 
   def genClassificationInstancesWithWeightedOutliers(
-      spark: SparkSession,
-      numClasses: Int,
-      numInstances: Int): DataFrame = {
+                                                      spark: SparkSession,
+                                                      numClasses: Int,
+                                                      numInstances: Int): DataFrame = {
     val data = Array.tabulate[Instance](numInstances) { i =>
       val feature = i % numClasses
       if (i < numInstances / 3) {
@@ -203,10 +203,10 @@ object MLTestingUtils extends SparkFunSuite {
   }
 
   def genEquivalentOversampledAndWeightedInstances(
-      data: DataFrame,
-      labelCol: String,
-      featuresCol: String,
-      seed: Long): (DataFrame, DataFrame) = {
+                                                    data: DataFrame,
+                                                    labelCol: String,
+                                                    featuresCol: String,
+                                                    seed: Long): (DataFrame, DataFrame) = {
     import data.sparkSession.implicits._
     val rng = scala.util.Random
     rng.setSeed(seed)

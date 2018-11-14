@@ -8,31 +8,31 @@ import org.apache.spark.sql.types.{ArrayType, DoubleType}
 
 class MultiLabelOneVsRestSuite extends SparkFunSuite with MLlibTestSparkContext with DefaultReadWriteTest {
 
-	import testImplicits._
+  import testImplicits._
 
-	@transient var dataset: Dataset[_] = _
+  @transient var dataset: Dataset[_] = _
 
-	test("multi-label OVR train") {
-		dataset = MLXUtils.loadMultiLabelLibSVMFile(sc, "data/multi_label_libsvm.txt")
-			.toDF()
-		dataset.show()
+  test("multi-label OVR train") {
+    dataset = MLXUtils.loadMultiLabelLibSVMFile(sc, "data/multi_label_libsvm.txt")
+      .toDF()
+    dataset.show()
 
-		val numClasses = 20
-		val ova = new MultiLabelOneVsRest()
-			.setClassifier(new LogisticRegression)
-		assert(ova.getLabelCol === "labels")
-		assert(ova.getPredictionCol === "prediction")
-		val ovaModel = ova.fit(dataset)
+    val numClasses = 20
+    val ova = new MultiLabelOneVsRest()
+      .setClassifier(new LogisticRegression)
+    assert(ova.getLabelCol === "labels")
+    assert(ova.getPredictionCol === "prediction")
+    val ovaModel = ova.fit(dataset)
 
-		// copied model must have the same parent.
-		MLTestingUtils.checkCopy(ovaModel)
+    // copied model must have the same parent.
+    MLTestingUtils.checkCopy(ovaModel)
 
-		assert(ovaModel.models.length === numClasses)
-		val transformedDataset = ovaModel.transform(dataset)
+    assert(ovaModel.models.length === numClasses)
+    val transformedDataset = ovaModel.transform(dataset)
 
-		// check for label metadata in prediction col
-		val predictionColSchema = transformedDataset.schema(ovaModel.getPredictionCol)
-		assert(predictionColSchema.dataType == new ArrayType(DoubleType, false))
-		transformedDataset.show()
-	}
+    // check for label metadata in prediction col
+    val predictionColSchema = transformedDataset.schema(ovaModel.getPredictionCol)
+    assert(predictionColSchema.dataType == new ArrayType(DoubleType, false))
+    transformedDataset.show()
+  }
 }
