@@ -1,53 +1,45 @@
 package org.apache.spark.ml.classification
 
+import java.util.UUID
+import java.util.{List => JList}
+
 import scala.collection.JavaConverters._
 import scala.language.existentials
 
-import java.util.UUID
-
 import org.apache.hadoop.fs.Path
-import org.apache.spark.annotation.Since
 import org.apache.spark.ml.{Estimator, Model}
 import org.apache.spark.ml.attribute._
 import org.apache.spark.ml.linalg.Vector
-import org.apache.spark.ml.param.ParamMap
+import org.apache.spark.ml.param.{DoubleParam, ParamMap, ParamValidators}
 import org.apache.spark.ml.util._
 import org.apache.spark.sql.{DataFrame, Dataset}
 import org.apache.spark.sql.expressions.UserDefinedFunction
-import org.apache.spark.sql.functions.{col, udf, when, _}
-import org.apache.spark.sql.types.{StructType, _}
+import org.apache.spark.sql.functions.{col, max, udf, when}
+import org.apache.spark.sql.types.{ArrayType, DataType, DoubleType, Metadata, StructType}
 import org.apache.spark.storage.StorageLevel
 import org.json4s.DefaultFormats
-
-import org.apache.hadoop.fs.Path
-import org.json4s.{DefaultFormats, JObject, _}
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods._
 
-import org.apache.spark.SparkContext
-import org.apache.spark.annotation.Since
-import org.apache.spark.ml._
-import org.apache.spark.ml.attribute._
-import org.apache.spark.ml.linalg.Vector
-import org.apache.spark.ml.param.{Param, ParamMap, ParamPair, Params}
-import org.apache.spark.ml.param.shared.HasWeightCol
-import org.apache.spark.ml.util._
-import org.apache.spark.sql.{DataFrame, Dataset, Row}
-import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types._
-import org.apache.spark.storage.StorageLevel
-
-import java.util.{List => JList}
-
 private[ml] trait MultiLabelOVRParams extends OneVsRestParams {
 
-  setDefault(labelCol -> "labels")
+  val threshold: DoubleParam = new DoubleParam(
+    this,
+    "threshold",
+    "Minimum positive-class probability for a label to be included in the prediction.",
+    ParamValidators.inRange(0.0, 1.0))
+
+  setDefault(labelCol -> "labels", threshold -> 0.5)
+
+  def setThreshold(value: Double): this.type = set(threshold, value)
+
+  def getThreshold: Double = $(threshold)
 
   /** Validates and transforms the input schema. */
   override protected def validateAndTransformSchema(
-                                                     schema: StructType,
-                                                     fitting: Boolean,
-                                                     featuresDataType: DataType): StructType = {
+      schema: StructType,
+      fitting: Boolean,
+      featuresDataType: DataType): StructType = {
     SchemaUtils.checkColumnType(schema, $(featuresCol), featuresDataType)
     val arrayDoubleType = new ArrayType(DoubleType, false)
     if (fitting) {
@@ -61,9 +53,9 @@ private[ml] trait MultiLabelOVRParams extends OneVsRestParams {
 }
 
 final class MultiLabelOVRModel private[ml](
-                                            override val uid: String,
-                                            private[ml] val labelMetadata: Metadata,
-                                            val models: Array[_ <: ClassificationModel[_, _]])
+    override val uid: String,
+    private[ml] val labelMetadata: Metadata,
+    val models: Array[_ <: ClassificationModel[_, _]])
   extends Model[MultiLabelOVRModel] with MultiLabelOVRParams with MLWritable {
 
   /** A Python-friendly auxiliary constructor. */
@@ -80,30 +72,24 @@ final class MultiLabelOVRModel private[ml](
   }
 
   override def transform(dataset: Dataset[_]): DataFrame = {
-    // Check schema
     transformSchema(dataset.schema, logging = true)
 
-    // determine the input columns: these need to be passed through
     val origCols = dataset.schema.map(f => col(f.name))
 
-    // add an accumulator column to store predictions of all the models
     val accColName = "mbc$acc" + UUID.randomUUID().toString
     val initUDF = udf { () => Map[Int, Double]() }
     val newDataset = dataset.withColumn(accColName, initUDF())
 
-    // persist if underlying dataset is not persistent.
-    val handlePersistence = dataset.rdd.getStorageLevel == StorageLevel.NONE
+    val handlePersistence = dataset.storageLevel == StorageLevel.NONE
     if (handlePersistence) {
       newDataset.persist(StorageLevel.MEMORY_AND_DISK)
     }
 
-    // update the accumulator column with the result of prediction of models
     val aggregatedDataset = models.zipWithIndex.foldLeft[DataFrame](newDataset) {
       case (df, (model, index)) =>
         val rawPredictionCol = model.getRawPredictionCol
         val columns = origCols ++ List(col(rawPredictionCol), col(accColName))
 
-        // add temporary column to store intermediate scores and update
         val tmpColName = "mbc$tmp" + UUID.randomUUID().toString
         val updateUDF = udf { (predictions: Map[Int, Double], prediction: Vector) =>
           predictions + ((index, prediction(1)))
@@ -114,7 +100,6 @@ final class MultiLabelOVRModel private[ml](
           .withColumn(tmpColName, updateUDF(col(accColName), col(rawPredictionCol)))
         val newColumns = origCols ++ List(col(tmpColName))
 
-        // switch out the intermediate column with the accumulator column
         updatedDataset.select(newColumns: _*).withColumnRenamed(tmpColName, accColName)
     }
 
@@ -122,14 +107,13 @@ final class MultiLabelOVRModel private[ml](
       newDataset.unpersist()
     }
 
-    // output the index of the classifier with highest confidence as prediction
+    val thresholdValue = $(threshold)
     val labelsUDF = udf { (predictions: Map[Int, Double]) =>
-      predictions.filter(_._2 > 0.5)
+      predictions.filter(_._2 > thresholdValue)
         .map(_._1.toDouble)
         .toArray
     }
 
-    // output label and label metadata as prediction
     aggregatedDataset
       .withColumn($(predictionCol), labelsUDF(col(accColName)), labelMetadata)
       .drop(accColName)
@@ -168,7 +152,6 @@ object MultiLabelOVRModel extends MLReadable[MultiLabelOVRModel] {
 
   private class MultiLabelOVRModelReader extends MLReader[MultiLabelOVRModel] {
 
-    /** Checked against metadata when loading model */
     private val className = classOf[MultiLabelOVRModel].getName
 
     override def load(path: String): MultiLabelOVRModel = {
@@ -181,7 +164,7 @@ object MultiLabelOVRModel extends MLReadable[MultiLabelOVRModel] {
         DefaultParamsReader.loadParamsInstance[ClassificationModel[_, _]](modelPath, sc)
       }
       val ovrModel = new MultiLabelOVRModel(metadata.uid, labelMetadata, models)
-      DefaultParamsReader.getAndSetParams(ovrModel, metadata)
+      metadata.getAndSetParams(ovrModel)
       ovrModel.set("classifier", classifier)
       ovrModel
     }
@@ -190,7 +173,7 @@ object MultiLabelOVRModel extends MLReadable[MultiLabelOVRModel] {
 }
 
 class MultiLabelOneVsRest(override val uid: String)
-  extends Estimator[MultiLabelOVRModel] with MultiLabelOVRParams {
+  extends Estimator[MultiLabelOVRModel] with MultiLabelOVRParams with MLWritable {
 
   def this() = this(Identifiable.randomUID("MultiLabelOVR"))
 
@@ -211,33 +194,30 @@ class MultiLabelOneVsRest(override val uid: String)
   override def fit(dataset: Dataset[_]): MultiLabelOVRModel = {
     transformSchema(dataset.schema)
 
-    // determine number of classes either from metadata if provided, or via computation.
     val maxLabelUDF = udf { labels: Seq[Double] =>
+      require(labels.nonEmpty, "Label arrays must not be empty.")
       labels.max
     }
-    val numClasses = dataset.agg {
+    val maxLabel = dataset.agg {
       max(maxLabelUDF(col($(labelCol))).cast(DoubleType))
     }
       .head()
       .getAs[Double](0)
-      .toInt
+    val numClasses = maxLabel.toInt + 1
 
     val multiLabeled = dataset.select($(labelCol), $(featuresCol))
 
-    // persist if underlying dataset is not persistent.
-    val handlePersistence = dataset.rdd.getStorageLevel == StorageLevel.NONE
+    val handlePersistence = dataset.storageLevel == StorageLevel.NONE
     if (handlePersistence) {
       multiLabeled.persist(StorageLevel.MEMORY_AND_DISK)
     }
 
-    // create k columns, one for each binary classifier.
     val labelsContains: Int => UserDefinedFunction = (index: Int) => {
       udf { labels: Seq[Double] =>
         labels.toSet.contains(index.toDouble)
       }
     }
-    val models = Range(0, numClasses).par.map { index =>
-      // generate new label metadata for the binary problem.
+    val models = Range(0, numClasses).map { index =>
       val newLabelMeta = BinaryAttribute.defaultAttr.withName("label").toMetadata()
       val labelColName = "mc2b$" + index
 
@@ -255,8 +235,6 @@ class MultiLabelOneVsRest(override val uid: String)
       multiLabeled.unpersist()
     }
 
-    // extract label metadata from label column if present, or create a nominal attribute
-    // to output the number of labels
     val labelAttribute = NominalAttribute.defaultAttr.withName("label").withNumValues(numClasses)
     val model = new MultiLabelOVRModel(uid, labelAttribute.toMetadata(), models).setParent(this)
     copyValues(model)
@@ -269,6 +247,8 @@ class MultiLabelOneVsRest(override val uid: String)
     }
     copied
   }
+
+  override def write: MLWriter = new MultiLabelOneVsRest.MultiLabelOneVsRestWriter(this)
 }
 
 object MultiLabelOneVsRest extends MLReadable[MultiLabelOneVsRest] {
@@ -289,13 +269,12 @@ object MultiLabelOneVsRest extends MLReadable[MultiLabelOneVsRest] {
 
   private class MultiLabelOneVsRestReader extends MLReader[MultiLabelOneVsRest] {
 
-    /** Checked against metadata when loading model */
     private val className = classOf[MultiLabelOneVsRest].getName
 
     override def load(path: String): MultiLabelOneVsRest = {
       val (metadata, classifier) = OneVsRestParams.loadImpl(path, sc, className)
       val ovr = new MultiLabelOneVsRest(metadata.uid)
-      DefaultParamsReader.getAndSetParams(ovr, metadata)
+      metadata.getAndSetParams(ovr)
       ovr.setClassifier(classifier)
     }
   }

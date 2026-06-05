@@ -17,39 +17,40 @@
 
 package org.apache.spark.mllib.util
 
-import java.io.File
-
+import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.SparkContext
 import org.apache.spark.ml.util.TempDirectory
 import org.apache.spark.sql.{SQLContext, SQLImplicits, SparkSession}
-import org.apache.spark.util.Utils
 import org.scalatest.Suite
 
 trait MLlibTestSparkContext extends TempDirectory { self: Suite =>
   @transient var spark: SparkSession = _
   @transient var sc: SparkContext = _
-  @transient var checkpointDir: String = _
 
   override def beforeAll() {
     super.beforeAll()
+    // Spark 2.4 reads SPARK_USER before UGI; JDK 17+ cannot call Subject.getSubject().
+    val testUser = Option(System.getenv("SPARK_USER")).getOrElse("test")
+    System.setProperty("HADOOP_USER_NAME", testUser)
+    UserGroupInformation.setLoginUser(UserGroupInformation.createRemoteUser(testUser))
+
     spark = SparkSession.builder
       .master("local[2]")
       .appName("MLlibUnitTest")
+      .config("spark.ui.enabled", "false")
       .getOrCreate()
     sc = spark.sparkContext
-
-    checkpointDir = Utils.createDirectory(tempDir.getCanonicalPath, "checkpoints").toString
-    sc.setCheckpointDir(checkpointDir)
   }
 
   override def afterAll() {
     try {
-      Utils.deleteRecursively(new File(checkpointDir))
-      SparkSession.clearActiveSession()
       if (spark != null) {
         spark.stop()
       }
+      SparkSession.clearActiveSession()
+      SparkSession.clearDefaultSession()
       spark = null
+      sc = null
     } finally {
       super.afterAll()
     }
